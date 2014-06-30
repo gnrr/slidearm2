@@ -133,7 +133,7 @@ int main (void)
 	if(pulled_trigger_p())
 		do_setting_bt_module();
 
-	while ( 1 )
+	while (1)
 	{
 		;
 	}
