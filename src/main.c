@@ -130,6 +130,7 @@ int main (void)
 	delay_ms(10);
 #endif
 
+	// do setting bluetooth module(RN42) if the trigger keep pulling at power on
 	if(pulled_trigger_p())
 		do_setting_bt_module();
 
