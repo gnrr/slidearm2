@@ -1,9 +1,9 @@
 /****************************************************************************
- *	 $Id:: uarttest.c 3635 2012-10-31 00:31:46Z usb00423					$
- *	 Project: NXP LPC8xx USART example
+ *   $Id:: uarttest.c 3635 2012-10-31 00:31:46Z usb00423                    $
+ *   Project: NXP LPC8xx USART example
  *
- *	 Description:
- *	   This file contains USART test modules, main entry, to test USART APIs.
+ *   Description:
+ *     This file contains USART test modules, main entry, to test USART APIs.
  *
  ****************************************************************************
  * Software that is described herein is for illustrative purposes only
@@ -30,40 +30,49 @@
 #include "lpc8xx_gpio.h"
 #include "lpc8xx_uart.h"
 #include "mystd.h"
+#include "keycode.h"
 
-#define SYSTICK_DELAY		(SystemCoreClock/1000)	// interrupt every 1ms
+#define SW_FWD		0
+#define SW_BACK		1
+
+#define SW_TYPE_A	0		// normal open
+#define SW_TYPE_B	1		// normal close
+u1 sw_type_back;			// SW_TYPE_A: BERETTA
+							// SW_TYPE_B: SIG, GLOCK
+
+u1 keystate[2] = {0, 0};	// 0:initial	1:pressed	 2:released
 volatile u4 TimeTick = 0;
 
 // sub functions
 void SysTick_Handler(void)
 {
-  TimeTick++;
+    TimeTick++;
 }
 
 void wait_ms(u4 tick)
 {
-  u4 timetick;
+    u4 timetick;
 
-  SysTick->VAL = 0;						// Enable the SysTick Counter
-  SysTick->CTRL |= (0x1<<0);			// Clear SysTick Counter
+    SysTick->VAL = 0;					// Enable the SysTick Counter
+    SysTick->CTRL |= (0x1<<0);			// Clear SysTick Counter
 
-  timetick = TimeTick;
-  while ((TimeTick - timetick) < tick) ;
+    timetick = TimeTick;
+    while ((TimeTick - timetick) < tick) ;
 
-  SysTick->CTRL &= ~(0x1<<0);			// Disable SysTick Counter
-  SysTick->VAL = 0;						// Clear SysTick Counter
+    SysTick->CTRL &= ~(0x1<<0);			// Disable SysTick Counter
+    SysTick->VAL = 0;					// Clear SysTick Counter
 }
 
-bool pulled_trigger_p(void)
+bool keep_pulling_p(sw)					// call at power on
 {
 	bool buf[100];
 	bool res = TRUE;
 	u1 i;
 
-	for(i=0; i<100; i++) buf[i] = 1;
+	for(i=0; i<100; i++) buf[i] = 1;	// init
 
 	for(i=0; i<100; i++)
-		buf[i] = GPIOGetPinValue(0, 0);
+		buf[i] = GPIOGetPinValue(0, sw);
 
 	for(i=0; i<100; i++) {
 		if(buf[i] == 1) {				// 0:pulled, 1:released
@@ -72,6 +81,28 @@ bool pulled_trigger_p(void)
 		}
 	}
 	return res;
+}
+
+bool pulled_p(sw)
+{
+	u1 *pks;
+	u1 k = OFF;
+
+	if(sw == SW_FWD) {
+		pks = &keystate[SW_FWD];
+		k = (GPIOGetPinValue(0, SW_FWD))? OFF:ON;		// HI:OFF	 LO:ON
+	} else if(sw == SW_BACK) {
+		if(sw_type_back == SW_TYPE_A)
+			k = (GPIOGetPinValue(0, SW_BACK))? OFF:ON;	// HI:OFF	 LO:ON
+		else
+			k = (GPIOGetPinValue(0, SW_BACK))? ON:OFF;	// LO:OFF	 HI:ON
+	}
+	if((k == ON) && (*pks == 0))
+		*pks = 1;
+	else if((k == OFF) && (*pks == 1))
+		*pks = 2;
+
+	return (*pks == 2);
 }
 
 void do_setting_bt_module(void)
@@ -90,6 +121,16 @@ void do_setting_bt_module(void)
 	wait_ms(100);
 }
 
+void send_report(u1 scan_code)
+{
+	//                0     1     2     3     4     5     6     7     8     9     10
+	//				 start len	 desc  mod	  00   scan1 scan2 scan3 scan4 scan5 scan6
+	u1 report[11] = {0xFD, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+	report[5] = scan_code;
+	UARTSend(LPC_USART0, (uint8_t *)report, 11);
+}
+
 void init_hw(void)
 {
 	u4 regVal;
@@ -97,7 +138,7 @@ void init_hw(void)
 	SystemCoreClockUpdate();
 
 	// systick wait
-	SysTick_Config(SYSTICK_DELAY);
+	SysTick_Config(SystemCoreClock/1000);		// interrupt every 1ms
 
 #if 0
 	// Config CLKOUT, mostly used for debugging
@@ -116,12 +157,21 @@ void init_hw(void)
 	LPC_SWM->PINASSIGN0 = regVal | ( 8 << 8 );				/* P0.8 is UART0 RXD. ASSIGN0(15:8) */
 
 	UARTInit(LPC_USART0, 115200);
+
+	// vars
+	sw_type_back = (keep_pulling_p(SW_BACK))? SW_TYPE_B:SW_TYPE_A;
 }
+
 
 // main function
 int main (void)
 {
+	bool reported_p = FALSE;
+	u1 i;
 	init_hw();
+
+	// decide switch type of slide back
+	sw_type_back = (keep_pulling_p(SW_BACK))? SW_TYPE_B:SW_TYPE_A;
 
 #if 0
 	UARTSend(LPC_USART0, (uint8_t *)"C", 1); // 0x43
@@ -131,11 +181,26 @@ int main (void)
 #endif
 
 	// do setting bluetooth module(RN42) if the trigger keep pulling at power on
-	if(pulled_trigger_p())
+	if(keep_pulling_p(SW_FWD))
 		do_setting_bt_module();
 
 	while (1)
 	{
-		;
+		if(reported_p == FALSE) {
+			if(pulled_p(SW_FWD)) {
+				send_report(USID_KBD_PAGE_DOWN);
+				reported_p = TRUE;
+			} else if(pulled_p(SW_BACK)) {
+				send_report(USID_KBD_PAGE_UP);
+				reported_p = TRUE;
+			}
+		} else {
+			send_report(0x00);		// released
+			reported_p = FALSE;
+
+			for(i=0;i<sizeof(keystate); i++)
+				keystate[i] = 0;
+		}
 	}
+	return EXIT_FAILURE;
 }
