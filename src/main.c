@@ -40,7 +40,9 @@
 u1 sw_type_back;			// SW_TYPE_A: BERETTA
 							// SW_TYPE_B: SIG, GLOCK
 
-u1 keystate[2] = {0, 0};	// 0:initial	1:pressed	 2:released
+enum {KS_INIT, KS_PRESSED, KS_RELEASED};
+u1 keystate[2] = {KS_INIT, KS_INIT};	// [0]:sw_fwd,    [1]:sw_back
+
 volatile u4 TimeTick = 0;
 
 // sub functions
@@ -88,8 +90,9 @@ bool pulled_p(sw)
 	u1 *pks;
 	u1 k = OFF;
 
+	pks = &keystate[sw];
+
 	if(sw == SW_FWD) {
-		pks = &keystate[SW_FWD];
 		k = (GPIOGetPinValue(0, SW_FWD))? OFF:ON;		// HI:OFF	 LO:ON
 	} else if(sw == SW_BACK) {
 		if(sw_type_back == SW_TYPE_A)
@@ -97,27 +100,27 @@ bool pulled_p(sw)
 		else
 			k = (GPIOGetPinValue(0, SW_BACK))? ON:OFF;	// LO:OFF	 HI:ON
 	}
-	if((k == ON) && (*pks == 0))
+	if((k == ON) && (*pks == KS_INIT))
 		*pks = 1;
-	else if((k == OFF) && (*pks == 1))
-		*pks = 2;
+	else if((k == OFF) && (*pks == KS_PRESSED))
+		*pks = KS_RELEASED;
 
-	return (*pks == 2);
+	return (*pks == KS_RELEASED);
 }
 
 void do_setting_bt_module(void)
 {
 	UARTSend(LPC_USART0, (uint8_t *)"$$$", 3);
 	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"s~,6\r", 5);				// HID
+	UARTSend(LPC_USART0, (uint8_t *)"s~,6\r\n", 5);				// HID
 	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"sm,6\r", 5);				// pairing mode
+	UARTSend(LPC_USART0, (uint8_t *)"sm,6\r\n", 5);				// pairing mode
 	wait_ms(100);
 //	UARTSend(LPC_USART0, (uint8_t *)"su,9600\r", 8);			// 9600bps
-//	wait_ms(10);
-	UARTSend(LPC_USART0, (uint8_t *)"s-,SLIDEARM200\r", 15);	// BT Name
+//	wait_ms(100);
+	UARTSend(LPC_USART0, (uint8_t *)"s-,SLIDEARM201\r\n", 15);	// BT Name
 	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"r,1\r", 4);				// reset
+	UARTSend(LPC_USART0, (uint8_t *)"r,1\r\n", 4);				// reset
 	wait_ms(100);
 }
 
@@ -125,10 +128,11 @@ void send_report(u1 scan_code)
 {
 	//                0     1     2     3     4     5     6     7     8     9     10
 	//				 start len	 desc  mod	  00   scan1 scan2 scan3 scan4 scan5 scan6
-	u1 report[11] = {0xFD, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	uint8_t report[11] = {0xFD, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 	report[5] = scan_code;
-	UARTSend(LPC_USART0, (uint8_t *)report, 11);
+	UARTSend(LPC_USART0, report, 11);
+	wait_ms(100);
 }
 
 void init_hw(void)
@@ -136,9 +140,6 @@ void init_hw(void)
 	u4 regVal;
 
 	SystemCoreClockUpdate();
-
-	// systick wait
-	SysTick_Config(SystemCoreClock/1000);		// interrupt every 1ms
 
 #if 0
 	// Config CLKOUT, mostly used for debugging
@@ -150,6 +151,9 @@ void init_hw(void)
 //	CLKOUT_Setup( CLKOUTCLK_SRC_IRC_OSC );
 #endif
 
+	// systick wait
+	SysTick_Config(SystemCoreClock/1000);		// interrupt every 1ms
+
 	// uart
 	regVal = LPC_SWM->PINASSIGN0 & ~( 0xFF << 0 );
 	LPC_SWM->PINASSIGN0 = regVal | ( 7 << 0 );				/* P0.7 is UART0 TXD, ASSIGN0(7:0) */
@@ -157,9 +161,6 @@ void init_hw(void)
 	LPC_SWM->PINASSIGN0 = regVal | ( 8 << 8 );				/* P0.8 is UART0 RXD. ASSIGN0(15:8) */
 
 	UARTInit(LPC_USART0, 115200);
-
-	// vars
-	sw_type_back = (keep_pulling_p(SW_BACK))? SW_TYPE_B:SW_TYPE_A;
 }
 
 
@@ -167,18 +168,10 @@ void init_hw(void)
 int main (void)
 {
 	bool reported_p = FALSE;
-	u1 i;
 	init_hw();
 
 	// decide switch type of slide back
 	sw_type_back = (keep_pulling_p(SW_BACK))? SW_TYPE_B:SW_TYPE_A;
-
-#if 0
-	UARTSend(LPC_USART0, (uint8_t *)"C", 1); // 0x43
-	delay_ms(10);
-	UARTSend(LPC_USART0, (uint8_t *)"a", 1); // 0x61
-	delay_ms(10);
-#endif
 
 	// do setting bluetooth module(RN42) if the trigger keep pulling at power on
 	if(keep_pulling_p(SW_FWD))
@@ -198,9 +191,9 @@ int main (void)
 			send_report(0x00);		// released
 			reported_p = FALSE;
 
-			for(i=0;i<sizeof(keystate); i++)
-				keystate[i] = 0;
+			keystate[SW_FWD] = keystate[SW_BACK] = KS_INIT;
 		}
 	}
-	return EXIT_FAILURE;
+
+	return EXIT_FAILURE;			// should not be reach here
 }

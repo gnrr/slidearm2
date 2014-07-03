@@ -4,3 +4,4 @@ makefile
 *.d
 *.o
 *.ld
+*#
