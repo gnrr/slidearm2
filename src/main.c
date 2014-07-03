@@ -101,7 +101,7 @@ bool pulled_p(sw)
 			k = (GPIOGetPinValue(0, SW_BACK))? ON:OFF;	// LO:OFF	 HI:ON
 	}
 	if((k == ON) && (*pks == KS_INIT))
-		*pks = 1;
+		*pks = KS_PRESSED;
 	else if((k == OFF) && (*pks == KS_PRESSED))
 		*pks = KS_RELEASED;
 
