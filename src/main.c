@@ -1,35 +1,15 @@
-/****************************************************************************
- *   $Id:: uarttest.c 3635 2012-10-31 00:31:46Z usb00423                    $
- *   Project: NXP LPC8xx USART example
+/*
+ * main.c
  *
- *   Description:
- *     This file contains USART test modules, main entry, to test USART APIs.
- *
- ****************************************************************************
- * Software that is described herein is for illustrative purposes only
- * which provides customers with programming information regarding the
- * products. This software is supplied "AS IS" without any warranties.
- * NXP Semiconductors assumes no responsibility or liability for the
- * use of the software, conveys no license or title under any patent,
- * copyright, or mask work right to the product. NXP Semiconductors
- * reserves the right to make changes in the software without
- * notification. NXP Semiconductors also make no representation or
- * warranty that such application will be suitable for the specified
- * use without further testing or modification.
- 
- * Permission to use, copy, modify, and distribute this software and its 
- * documentation is hereby granted, under NXP Semiconductors' 
- * relevant copyright in the software, without fee, provided that it 
- * is used in conjunction with NXP Semiconductors microcontrollers. This 
- * copyright, permission, and disclaimer notice must appear in all copies of 
- * this code.
- 
- ****************************************************************************/
+ *	Created on: Jun 30, 2014
+ *		Author: g
+ */
 #include "LPC8xx.h"
 #include "lpc8xx_clkconfig.h"
 #include "lpc8xx_gpio.h"
 #include "lpc8xx_uart.h"
 #include "mystd.h"
+#include "timer.h"
 #include "keycode.h"
 
 #define SW_FWD		0
@@ -65,7 +45,7 @@ void wait_ms(u4 tick)
     SysTick->VAL = 0;					// Clear SysTick Counter
 }
 
-bool keep_pulling_p(sw)					// call at power on
+bool keep_pulling_p(sw)					// call at powered on
 {
 	bool buf[100];
 	bool res = TRUE;
@@ -87,6 +67,8 @@ bool keep_pulling_p(sw)					// call at power on
 
 bool pulled_p(sw)
 {
+	const u4 DELAY_UNTIL_REPEAT	= 800;			// ms
+	static bool repeating[2] = {OFF, OFF};		// [0]:sw_fwd,    [1]:sw_back
 	u1 *pks;
 	u1 k = OFF;
 
@@ -100,11 +82,27 @@ bool pulled_p(sw)
 		else
 			k = (GPIOGetPinValue(0, SW_BACK))? ON:OFF;	// LO:OFF	 HI:ON
 	}
-	if((k == ON) && (*pks == KS_INIT))
-		*pks = KS_PRESSED;
-	else if((k == OFF) && (*pks == KS_PRESSED))
-		*pks = KS_RELEASED;
 
+	if((k == ON) && (*pks == KS_INIT)) {				// pulled?
+		start_timer(sw);
+		*pks = KS_PRESSED;
+	}
+	else if((k == ON) && (*pks == KS_PRESSED)) {		// keep pulling?
+		if(read_timer(sw) > DELAY_UNTIL_REPEAT){
+			stop_timer(sw);
+			*pks = KS_RELEASED;
+			repeating[sw] = ON;
+		}
+	}
+	else if((k == OFF) && (*pks == KS_PRESSED)) {		// released?
+		stop_timer(sw);
+		if(repeating[sw] == OFF) {
+			*pks = KS_RELEASED;
+		} else {
+			*pks = KS_INIT;
+			repeating[sw] = OFF;
+		}
+	}
 	return (*pks == KS_RELEASED);
 }
 
@@ -153,6 +151,10 @@ void init_hw(void)
 
 	// systick wait
 	SysTick_Config(SystemCoreClock/1000);		// interrupt every 1ms
+
+	// timer
+	LPC_SYSCON->SYSAHBCLKCTRL |= (1<<6);		// Enable AHB clock to the GPIO domain.
+	init_timer();
 
 	// uart
 	regVal = LPC_SWM->PINASSIGN0 & ~( 0xFF << 0 );
