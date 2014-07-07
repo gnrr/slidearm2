@@ -1,0 +1,36 @@
+DEFALUT:
+----------------------------------
+Ver 6.11 05/18/12
+(c) Roving Networks
+***Settings***
+BTA=0006664E20E1
+BTName=FireFly-20E1
+Baudrt(SW4)=115K
+Mode  =DTR
+Authen=1
+PinCod=1234
+Bonded=0
+Rem=001583490F34
+***ADVANCED Settings***
+SrvName= SPP
+SrvClass=0000
+DevClass=1F00
+InqWindw=0060
+PagWindw=0060
+CfgTimer=60
+StatuStr=NULL
+HidFlags=200
+DTRtimer=8
+KeySwapr=0
+***OTHER Settings***
+Profile= SPP
+CfgChar= $
+SniffEna=0
+LowPower=0
+TX Power=0
+IOPorts= 0
+IOValues=0
+Sleeptmr=0
+DebugMod=0
+RoleSwch=0
+Reboot!

@@ -1,0 +1,14 @@
+Partlist exported from /Users/g/Documents/eagle/proj/slidearm200/slidearm.sch at 7/8 6:35
+
+Part Value           Device          Package Description                 
+C1   1uF             C-EUC0603       C0603   CAPACITOR, European symbol  
+C2   1uF             C-EUC0603       C0603   CAPACITOR, European symbol  
+C3   0.1uF           C-EUC0603       C0603   CAPACITOR, European symbol  
+CN1  POWER           PINHD-1X2       1X02    PIN HEADER                  
+CN2  SW              PINHD-1X4       1X04    PIN HEADER                  
+CN3  BT SETTING      PINHD-1X4       1X04    PIN HEADER                  
+CN4  SWD             PINHD-1X4       1X04    PIN HEADER                  
+R1   10k             R-EU_R0603      R0603   RESISTOR, European symbol   
+U1   LPC811M001JDH16 LPC811M001JDH16 TSSOP16                             
+U2   RN42HID-I/RM    RN42            RN42    ROVING NETWORKS             
+U3   XC6201P33       XC6201P33       SOT25   TOREX LDO Voltage Regulator 

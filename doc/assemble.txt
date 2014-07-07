@@ -1,0 +1,36 @@
+### RN42 のBluetooth設定
+
+結線
+
+
+$ screen /dev/tty.XXX 115200
+$$$                # enter the command mode
+s~,6<CR>           # Profile(HID)
+sm,6<CR>           # Mode(Pair)
+s-,SLIDEARM200<CR> # BT Name
+
+x<CR>              # print setting smmary
+r,1<CR>            # reset
+
+注意  <CR>: 0x0D
+     Factory Reset: SF,1 <cr>
+
+C-a C-\ でscreenを抜ける
+
+
+ここで Mac で Bluetooth デバイスを探せば、HIDとして接続できるはず。
+
+### LPC811の書き込み
+
+LPCXpresso > 
+
+
+### エアソフトガンをばらす
+
+### エアソフトガンのいらない部品を取り去る
+モーターの電線を元から切断し、モーターを捨てる
+
+
+### エアソフトガンに組み付け
+トリガSW
+
