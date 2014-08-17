@@ -20,7 +20,7 @@
 u1 sw_type_back;			// SW_TYPE_A: BERETTA
 							// SW_TYPE_B: SIG, GLOCK
 
-enum {KS_INIT, KS_PRESSED, KS_RELEASED};
+enum {KS_INIT, KS_PRESSED1, KS_PRESSED2, KS_PRESSED3};
 u1 keystate[2] = {KS_INIT, KS_INIT};	// [0]:sw_fwd,    [1]:sw_back
 
 volatile u4 TimeTick = 0;
@@ -67,10 +67,11 @@ bool keep_pulling_p(sw)					// call at powered on
 
 bool pulled_p(sw)
 {
-	const u4 DELAY_UNTIL_REPEAT	= 800;			// ms
-	static bool repeating[2] = {OFF, OFF};		// [0]:sw_fwd,    [1]:sw_back
+	const u4 DELAY_UNTIL_REPEAT	= 1000;			// ms
+	const u4 REPEAT_INTERVAL	= 200;			// ms
+	bool out = OFF;
+	bool k = OFF;
 	u1 *pks;
-	u1 k = OFF;
 
 	pks = &keystate[sw];
 
@@ -83,49 +84,55 @@ bool pulled_p(sw)
 			k = (GPIOGetPinValue(0, SW_BACK))? ON:OFF;	// LO:OFF	 HI:ON
 	}
 
-	if((k == ON) && (*pks == KS_INIT)) {				// pulled?
+	if((k == ON) && (*pks == KS_INIT)) {				// pulled first time?
+		*pks = KS_PRESSED1;
+	}
+	else if((k == ON) && (*pks == KS_PRESSED1)) {			// pulled second time?
+		out = ON;
 		start_timer(sw);
-		*pks = KS_PRESSED;
+		*pks = KS_PRESSED2;
 	}
-	else if((k == ON) && (*pks == KS_PRESSED)) {		// keep pulling?
-		if(read_timer(sw) > DELAY_UNTIL_REPEAT){
+	else if((k == ON) && (*pks == KS_PRESSED2)) {		// keep pulling?
+		if(read_timer(sw) > DELAY_UNTIL_REPEAT) {
+			out = ON;
 			stop_timer(sw);
-			*pks = KS_RELEASED;
-			repeating[sw] = ON;
+			start_timer(sw);
+			*pks = KS_PRESSED3;
+		}
+	} else if((k == ON) && (*pks == KS_PRESSED3)) {
+		if(read_timer(sw) > REPEAT_INTERVAL) {
+			out = ON;
+			stop_timer(sw);
+			start_timer(sw);
 		}
 	}
-	else if((k == OFF) && (*pks == KS_PRESSED)) {		// released?
+	else if(k == OFF) {		// released?
 		stop_timer(sw);
-		if(repeating[sw] == OFF) {
-			*pks = KS_RELEASED;
-		} else {
-			*pks = KS_INIT;
-			repeating[sw] = OFF;
-		}
+		*pks = KS_INIT;
 	}
-	return (*pks == KS_RELEASED);
+	return out;
 }
 
 void do_setting_bt_module(void)
 {
+	const u4 WAIT = 100;		// ms
+
 	UARTSend(LPC_USART0, (uint8_t *)"$$$", 3);
-	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"s~,6\r\n", 5);				// HID
-	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"sm,6\r\n", 5);				// pairing mode
-	wait_ms(100);
-//	UARTSend(LPC_USART0, (uint8_t *)"su,9600\r", 8);			// 9600bps
-//	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"s-,SLIDEARM201\r\n", 15);	// BT Name
-	wait_ms(100);
-	UARTSend(LPC_USART0, (uint8_t *)"r,1\r\n", 4);				// reset
-	wait_ms(100);
+	wait_ms(WAIT);
+	UARTSend(LPC_USART0, (uint8_t *)"s~,6\r\n", 6);				// HID
+	wait_ms(WAIT);
+	UARTSend(LPC_USART0, (uint8_t *)"sm,6\r\n", 6);				// pairing mode
+	wait_ms(WAIT);
+	UARTSend(LPC_USART0, (uint8_t *)"s-,SLIDEARM201\r\n", 16);	// BT Name
+	wait_ms(WAIT);
+	UARTSend(LPC_USART0, (uint8_t *)"r,1\r\n", 5);				// reset
+	wait_ms(WAIT);
 }
 
 void send_report(u1 scan_code)
 {
-	//                0     1     2     3     4     5     6     7     8     9     10
-	//				 start len	 desc  mod	  00   scan1 scan2 scan3 scan4 scan5 scan6
+	//                     0     1     2     3     4     5     6     7     8     9     10
+	//                    start len   desc  mod	   00   scan1 scan2 scan3 scan4 scan5 scan6
 	uint8_t report[11] = {0xFD, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 	report[5] = scan_code;
@@ -192,8 +199,6 @@ int main (void)
 		} else {
 			send_report(0x00);		// released
 			reported_p = FALSE;
-
-			keystate[SW_FWD] = keystate[SW_BACK] = KS_INIT;
 		}
 	}
 
